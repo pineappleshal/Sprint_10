@@ -5,42 +5,65 @@ import allure
 from data import ADDRESSES
 
 
-@allure.feature('Полный сценарий заказа такси')
+@allure.feature('Этапы заказа такси')
 class TestTaxiOrder:
     @allure.title('Заказ рабочего тарифа со столиком открывает окно поиска машины')
-    def test_search_window(self, work_tariff, order_modal):
-        assert work_tariff.laptop_table_is_selected()
-        work_tariff.order()
-        state = order_modal.search_state()
+    def test_order_opens_search_window(self, placed_order):
+        state = placed_order.search_state()
 
         assert state['title'] == 'Поиск машины'
         assert re.fullmatch(r'\d{2}:\d{2}', state['timer']), 'Должен отображаться таймер обратного отсчёта'
-        assert order_modal.timer_decreases(state['timer'])
         assert state['cancel'] and state['details'], 'Должны быть доступны обе кнопки'
-        order_modal.cancel()
-        assert order_modal.is_closed()
 
-    @allure.title('Полный заказ: ожидание машины, сведения о водителе, детали и отмена')
-    def test_complete_taxi_order_flow(self, work_tariff, order_modal):
-        expected_price = work_tariff.price()
-        expected_image = work_tariff.tariff_image()
-        expected_payment = work_tariff.payment()
-        assert work_tariff.laptop_table_is_selected()
-        work_tariff.order()
-        order_modal.wait_for_car()
-        state = order_modal.completed_state()
+    @allure.title('Таймер поиска машины отсчитывает время назад')
+    def test_search_timer_counts_down(self, placed_order):
+        before = placed_order.search_state()['timer']
+        after = placed_order.changed_timer(before)
+
+        assert re.fullmatch(r'\d{2}:\d{2}', after)
+        assert after < before, 'Время поиска должно уменьшаться'
+
+    @allure.title('После поиска отображается окно заказа с данными машины и водителя')
+    def test_search_finishes_with_car_and_driver(self, completed_order, order_expectations):
+        state = completed_order.completed_state()
 
         assert re.fullmatch(r'\d+ мин\. и приедет', state['title'])
         assert re.fullmatch(r'[а-яa-z]\s?\d{3}\s?[а-яa-z]{2}', state['number'], re.IGNORECASE)
-        assert state['car_image'] == expected_image and state['car_image_loaded']
+        assert state['car_image'] == order_expectations['image'] and state['car_image_loaded']
         assert state['driver'] and state['photo_loaded']
         assert re.fullmatch(r'[0-5][,.]\d', state['rating'])
         assert state['cancel'] and state['details']
 
-        order_modal.open_details()
-        assert order_modal.details() == {
+    @allure.title('В деталях заказа сохранены выбранные адреса и способ оплаты')
+    def test_details_show_route_and_payment(self, completed_order, order_expectations):
+        completed_order.open_details()
+        details = completed_order.details()
+        expected = {
             'from': ADDRESSES[0], 'to': ADDRESSES[1],
-            'payment': expected_payment, 'price': expected_price,
+            'payment': order_expectations['payment'],
         }
-        order_modal.cancel()
-        assert order_modal.is_closed()
+        actual = {key: details[key] for key in expected}
+
+        assert actual == expected
+
+    @allure.title('Стоимость в деталях заказа совпадает со стоимостью выбранного тарифа')
+    def test_details_price_matches_tariff(self, completed_order, order_expectations):
+        completed_order.open_details()
+        price = completed_order.details()['price']
+
+        assert price == order_expectations['price']
+
+    @allure.title('Отмена во время поиска закрывает окно заказа')
+    def test_cancel_closes_search_window(self, placed_order):
+        placed_order.search_state()
+        placed_order.cancel()
+        is_closed = placed_order.is_closed()
+
+        assert is_closed
+
+    @allure.title('Отмена после поиска машины закрывает окно заказа')
+    def test_cancel_closes_completed_order(self, completed_order):
+        completed_order.cancel()
+        is_closed = completed_order.is_closed()
+
+        assert is_closed

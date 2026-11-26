@@ -4,8 +4,9 @@ from selenium.common.exceptions import WebDriverException
 
 from data import ADDRESSES
 from helpers.browser_factory import create_browser
-from pages.map_component import MapComponent
-from pages.order_modal import OrderModal
+from pages.base_page import BasePage
+from pages.map_page import MapPage
+from pages.order_page import OrderPage
 from pages.routes_page import RoutesPage
 from pages.taxi_page import TaxiPage
 
@@ -33,8 +34,8 @@ def configured_route(routes_page):
 
 
 @pytest.fixture
-def map_component(driver):
-    return MapComponent(driver)
+def map_page(driver):
+    return MapPage(driver)
 
 
 @pytest.fixture
@@ -52,8 +53,29 @@ def work_tariff(taxi_page):
 
 
 @pytest.fixture
-def order_modal(driver):
-    return OrderModal(driver)
+def order_page(driver):
+    return OrderPage(driver)
+
+
+@pytest.fixture
+def order_expectations(work_tariff):
+    return {
+        'price': work_tariff.price(),
+        'image': work_tariff.tariff_image(),
+        'payment': work_tariff.payment(),
+    }
+
+
+@pytest.fixture
+def placed_order(work_tariff, order_page, order_expectations):
+    work_tariff.order()
+    return order_page
+
+
+@pytest.fixture
+def completed_order(placed_order):
+    placed_order.wait_for_car()
+    return placed_order
 
 
 @pytest.hookimpl(hookwrapper=True)
@@ -63,6 +85,6 @@ def pytest_runtest_makereport(item, call):
     driver = item.funcargs.get('driver')
     if driver is not None and (report.failed or hasattr(report, 'wasxfail')):
         try:
-            allure.attach(driver.get_screenshot_as_png(), 'Страница при проверке', allure.attachment_type.PNG)
+            allure.attach(BasePage(driver).screenshot(), 'Страница при проверке', allure.attachment_type.PNG)
         except WebDriverException:
             allure.attach('Браузер недоступен для снимка.', 'Диагностика', allure.attachment_type.TEXT)

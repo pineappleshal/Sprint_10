@@ -1,51 +1,47 @@
 import re
 
 import allure
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.support.ui import WebDriverWait
 
 from config import ORDER_TIMEOUT
 from locators.order_locators import OrderLocators
 from pages.base_page import BasePage
 
 
-class OrderModal(BasePage):
+class OrderPage(BasePage):
     @allure.step('Прочитать состояние окна поиска машины')
     def search_state(self):
         self.visible(OrderLocators.MODAL)
-        self.wait.until(lambda _: self.timer_seconds() > 0)
+        self.wait_until(lambda: self.timer_seconds() > 0)
         return {
-            'title': self.visible(OrderLocators.TITLE).text,
-            'timer': self.visible(OrderLocators.TIMER).text,
+            'title': self.text(OrderLocators.TITLE),
+            'timer': self.text(OrderLocators.TIMER),
             'cancel': self.is_clickable(OrderLocators.CANCEL),
             'details': self.is_clickable(OrderLocators.DETAILS),
         }
 
     @allure.step('Дождаться окончания поиска машины без изменения таймера')
     def wait_for_car(self):
-        WebDriverWait(self.driver, ORDER_TIMEOUT).until(
-            EC.text_to_be_present_in_element(OrderLocators.TITLE, 'мин. и приедет')
-        )
+        self.wait_for_text(OrderLocators.TITLE, 'мин. и приедет', timeout=ORDER_TIMEOUT)
 
-    @allure.step('Проверить уменьшение таймера поиска')
-    def timer_decreases(self, previous):
-        minutes, seconds = map(int, previous.split(':'))
-        return bool(self.wait.until(lambda _: self.timer_seconds() < minutes * 60 + seconds))
+    @allure.step('Дождаться изменения таймера поиска')
+    def changed_timer(self, previous):
+        self.wait_until(lambda: self.text(OrderLocators.TIMER) != previous)
+        return self.text(OrderLocators.TIMER)
 
     def timer_seconds(self):
-        minutes, seconds = map(int, self.visible(OrderLocators.TIMER).text.split(':'))
+        minutes, seconds = map(int, self.text(OrderLocators.TIMER).split(':'))
         return minutes * 60 + seconds
 
     @allure.step('Прочитать элементы совершённого заказа')
     def completed_state(self):
         return {
-            'title': self.visible(OrderLocators.TITLE).text,
-            'number': self.visible(OrderLocators.NUMBER).text,
-            'car_image': self.visible(OrderLocators.CAR).get_attribute('src'),
+            'title': self.text(OrderLocators.TITLE),
+            'number': self.text(OrderLocators.NUMBER),
+            'car_image': self.attribute(OrderLocators.CAR, 'src'),
             'car_image_loaded': self.image_is_loaded(OrderLocators.CAR),
-            'driver': self.visible(OrderLocators.DRIVER_NAME).text,
+            'driver': self.text(OrderLocators.DRIVER_NAME),
             'photo_loaded': self.image_is_loaded(OrderLocators.DRIVER_PHOTO),
-            'rating': self.visible(OrderLocators.RATING).text,
+            'rating': self.text(OrderLocators.RATING),
             'cancel': self.is_clickable(OrderLocators.CANCEL),
             'details': self.is_clickable(OrderLocators.DETAILS),
         }
@@ -57,11 +53,11 @@ class OrderModal(BasePage):
 
     @allure.step('Прочитать адреса, способ оплаты и стоимость из деталей')
     def details(self):
-        cost = self.visible(OrderLocators.COST).text
+        cost = self.text(OrderLocators.COST)
         return {
-            'from': self.visible(self.format_locator(OrderLocators.DETAIL_VALUE, 'Адрес подачи')).text,
-            'to': self.visible(self.format_locator(OrderLocators.DETAIL_VALUE, 'Адрес назначения')).text,
-            'payment': self.visible(self.format_locator(OrderLocators.DETAIL_VALUE, 'Способ оплаты')).text,
+            'from': self.text(self.format_locator(OrderLocators.DETAIL_VALUE, 'Адрес подачи')),
+            'to': self.text(self.format_locator(OrderLocators.DETAIL_VALUE, 'Адрес назначения')),
+            'payment': self.text(self.format_locator(OrderLocators.DETAIL_VALUE, 'Способ оплаты')),
             'price': int(re.search(r'\d+', cost).group()),
         }
 
@@ -71,4 +67,4 @@ class OrderModal(BasePage):
 
     @allure.step('Проверить закрытие окна заказа')
     def is_closed(self):
-        return bool(self.wait.until(EC.invisibility_of_element_located(OrderLocators.MODAL)))
+        return self.is_hidden(OrderLocators.MODAL)
